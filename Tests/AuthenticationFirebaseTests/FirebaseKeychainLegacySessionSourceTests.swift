@@ -8,8 +8,12 @@ import Authentication
 struct FirebaseKeychainLegacySessionSourceTests {
     private let item = FirebaseUserKeychainItem(googleAppID: "1:1234567890:ios:abcdef", appName: "__FIRAPP_DEFAULT")
 
-    private func source(_ keychain: FakeKeychain, item: FirebaseUserKeychainItem? = nil) -> FirebaseKeychainLegacySessionSource {
-        FirebaseKeychainLegacySessionSource(item: item ?? self.item, keychain: keychain)
+    private func source(
+        _ keychain: FakeKeychain,
+        item: FirebaseUserKeychainItem? = nil,
+        protectedData: FakeProtectedData = FakeProtectedData(available: true)
+    ) -> FirebaseKeychainLegacySessionSource {
+        FirebaseKeychainLegacySessionSource(item: item ?? self.item, keychain: keychain, protectedData: protectedData)
     }
 
     private func keychain(holding data: Data) -> FakeKeychain {
@@ -108,13 +112,51 @@ struct FirebaseKeychainLegacySessionSourceTests {
     @Test("a keychain that cannot be read is reported with its status")
     func keychainFailure() async {
         let keychain = FakeKeychain()
-        keychain.fail(with: errSecInteractionNotAllowed)
-        #expect(throws: FirebaseKeychainError.keychainFailed(status: errSecInteractionNotAllowed)) {
+        keychain.fail(with: errSecMissingEntitlement)
+        #expect(throws: FirebaseKeychainError.keychainFailed(status: errSecMissingEntitlement)) {
             _ = try source(keychain).storedUser()
         }
-        await #expect(throws: FirebaseKeychainError.keychainFailed(status: errSecInteractionNotAllowed)) {
+        await #expect(throws: FirebaseKeychainError.keychainFailed(status: errSecMissingEntitlement)) {
             try await source(keychain).discard()
         }
+    }
+
+    // MARK: - Protected data not available
+
+    @Test("a locked keychain is reported as protected data unavailable, not as no user")
+    func lockedKeychain() async {
+        let keychain = FakeKeychain()
+        keychain.fail(with: errSecInteractionNotAllowed)
+        #expect(throws: ProtectedDataUnavailable(status: errSecInteractionNotAllowed)) {
+            _ = try source(keychain).storedUser()
+        }
+        await #expect(throws: ProtectedDataUnavailable(status: errSecInteractionNotAllowed)) {
+            _ = try await source(keychain).legacyCredential()
+        }
+    }
+
+    @Test("no item while protected data is unavailable is not no user, and is read once it is available")
+    func notFoundWhileLocked() async throws {
+        let keychain = FakeKeychain()
+        let protectedData = FakeProtectedData(available: false)
+        let source = source(keychain, protectedData: protectedData)
+
+        #expect(throws: ProtectedDataUnavailable(status: errSecItemNotFound)) { _ = try source.storedUser() }
+        await #expect(throws: ProtectedDataUnavailable(status: errSecItemNotFound)) {
+            _ = try await source.legacyCredential()
+        }
+
+        protectedData.set(available: true)
+        #expect(try source.storedUser() == nil)
+    }
+
+    @Test("an item that was read is used without asking about protected data")
+    func readItemIsTrusted() async throws {
+        let protectedData = FakeProtectedData(available: false)
+        let source = source(keychain(holding: FirebaseArchiveFixture.userArchive()), protectedData: protectedData)
+
+        #expect(try await source.legacyCredential() == .firebaseRefreshToken("AMf-refresh-token"))
+        #expect(protectedData.askCount == 0)
     }
 
     @Test("bytes that are not a keyed archive")

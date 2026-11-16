@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "AuthenticationFirebase", targets: ["AuthenticationFirebase"])
     ],
     dependencies: [
-        .package(url: "https://github.com/no-problem-dev/swift-authentication.git", from: "12.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-authentication.git", from: "12.1.0"),
     ],
     targets: [
         .target(

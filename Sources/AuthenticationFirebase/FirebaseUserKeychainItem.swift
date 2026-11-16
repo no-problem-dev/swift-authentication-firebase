@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Authentication
 
 /// Where Firebase Authentication files its signed-in user in the keychain.
 ///
@@ -40,10 +41,19 @@ struct FirebaseUserKeychainItem: Sendable, Equatable {
 
 /// Generic-password items, so tests can stand in for the keychain.
 protocol KeychainItems: Sendable {
-    /// The item's data, or `nil` when there is no such item.
+    /// The item's data, or `nil` when the keychain answered "not found" — which a locked device
+    /// can answer for an item that is there.
     func data(service: String?, account: String) throws -> Data?
     /// Removes the item. Succeeds when there is none.
     func delete(service: String?, account: String) throws
+}
+
+/// The error for a keychain status other than success and "not found":
+/// `ProtectedDataUnavailable` while the device is locked, ``FirebaseKeychainError`` otherwise.
+func keychainError(_ status: OSStatus) -> any Error {
+    status == errSecInteractionNotAllowed
+        ? ProtectedDataUnavailable(status: status)
+        : FirebaseKeychainError.keychainFailed(status: status)
 }
 
 /// The device's keychain.
@@ -63,14 +73,14 @@ struct SystemKeychain: KeychainItems {
         case errSecItemNotFound:
             return nil
         default:
-            throw FirebaseKeychainError.keychainFailed(status: status)
+            throw keychainError(status)
         }
     }
 
     func delete(service: String?, account: String) throws {
         let status = SecItemDelete(Self.query(service: service, account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw FirebaseKeychainError.keychainFailed(status: status)
+            throw keychainError(status)
         }
     }
 

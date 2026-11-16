@@ -31,6 +31,7 @@ let authenticator = SessionAuthenticator(
 - サーバーが「二度と替えられない」と答えたとき（Google がリフレッシュトークンを断った）は、項目を消し、新しい端末と同じように始める
 - `storedUser()` は通信せずに項目を読み、前のバージョンの uid・メール・表示名・つないだプロバイダを返す。交換が通信を待つ間も、サインインしたままに見せるのに使う
 - 読めない項目は「ユーザーがいない」にせず、`FirebaseKeychainError`（`keychainFailed(status:)`・`notAKeyedArchive`・`unexpectedArchive`）で返す
+- 端末の保護されたデータが使えない間（再起動後に一度もロックを解いていない間や、ロック中の事前起動・バックグラウンドでの起動）は、項目があってもキーチェーンが「見つからない」と答えることがある。「ユーザーがいない」と答える前に `ProtectedDataAvailability`（既定は `KeychainProtectedDataProbe`）に確かめ、使えなければ `ProtectedDataUnavailable` を投げる。`establishSession()` はそれをそのまま投げ、何も作らない。`UIApplication.protectedDataDidBecomeAvailableNotification` の後にもう一度呼ぶ
 
 項目は SDK の物：サービス `firebase_auth_<GOOGLE_APP_ID>`、アカウント `firebase_auth_1_<アプリ名>_firebase_user`、中身は `FIRUser` の NSKeyedArchiver。接頭辞もサービスも無いアカウントは最も古い SDK が書いた物で、これも読む。共有のアクセスグループ（`Auth.useUserAccessGroup(_:)`）に置いたユーザーは読まない。
 
@@ -40,7 +41,7 @@ let authenticator = SessionAuthenticator(
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "2.0.0")
+    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "2.1.0")
 ]
 ```
 

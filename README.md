@@ -31,6 +31,7 @@ let authenticator = SessionAuthenticator(
 - When the server says it never will — Google refused the refresh token for good — the item is removed and the device starts as a new one would.
 - `storedUser()` reads the item without a request: the uid, email, display name and linked providers the earlier version had. Use it to show the person as signed in while the exchange waits for the network.
 - An item that cannot be read is reported as `FirebaseKeychainError` — `keychainFailed(status:)`, `notAKeyedArchive`, `unexpectedArchive` — never as "no user".
+- While the device's protected data is unavailable — a prewarmed or background launch before the first unlock, or while locked — the keychain can answer "not found" for an item that is there. The source checks `ProtectedDataAvailability` (`KeychainProtectedDataProbe` by default) before it says there is no user, and throws `ProtectedDataUnavailable` instead; `establishSession()` passes it on and opens nothing. Call it again after `UIApplication.protectedDataDidBecomeAvailableNotification`.
 
 The item is the SDK's: service `firebase_auth_<GOOGLE_APP_ID>`, account `firebase_auth_1_<app name>_firebase_user`, holding a keyed archive of `FIRUser`; the account without the prefix and service is what the oldest SDKs wrote, and is read too. A user kept in a shared access group (`Auth.useUserAccessGroup(_:)`) is not read.
 
@@ -40,7 +41,7 @@ Once old versions of the app are rare enough, remove this package.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "2.0.0")
+    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "2.1.0")
 ]
 ```
 
