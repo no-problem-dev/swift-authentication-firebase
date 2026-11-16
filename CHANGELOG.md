@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-16
+
+### Fixed
+
+- `FirebaseKeychainUser` printed the Firebase refresh token, the email and the name through
+  `String(describing:)`, interpolation and `dump`. It now prints the uid, whether it is anonymous
+  and the providers, and `<redacted>` for the rest.
+
 ## [2.1.0] - 2026-11-16
 
 A launch the person did not start — prewarming, a background task — before the first unlock or

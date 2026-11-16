@@ -141,6 +141,26 @@ public struct FirebaseKeychainUser: Sendable, Equatable {
     }
 }
 
+// Logs, crash reports and `dump` print a value through these. The refresh token — which Google
+// trades for the person's Firebase session — stays out of all of them, and so do the email and
+// the name.
+extension FirebaseKeychainUser: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String {
+        "FirebaseKeychainUser(uid: \(uid), isAnonymous: \(isAnonymous), "
+            + "providers: \(firebaseProviderIDs), refreshToken: <redacted>)"
+    }
+
+    public var debugDescription: String { description }
+
+    public var customMirror: Mirror {
+        Mirror(
+            self,
+            children: ["uid": uid, "isAnonymous": isAnonymous, "firebaseProviderIDs": firebaseProviderIDs, "secrets": "<redacted>"],
+            displayStyle: .struct
+        )
+    }
+}
+
 /// Why the Firebase user in the keychain could not be read.
 public enum FirebaseKeychainError: Error, Equatable, Sendable {
     /// A keychain call returned this status. `errSecInteractionNotAllowed` — the device's
