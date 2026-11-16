@@ -2,50 +2,49 @@ English | [日本語](./README.ja.md)
 
 # swift-authentication-firebase
 
-Firebase Authentication for [swift-authentication](https://github.com/no-problem-dev/swift-authentication), **for moving apps off Firebase only. New apps do not use it.**
+Moves the people an app signed in with Firebase Authentication onto [swift-authentication](https://github.com/no-problem-dev/swift-authentication)'s `SessionAuthenticator` — **without the Firebase SDK**. New apps do not use it.
 
 ![Swift](https://img.shields.io/badge/Swift-6.2-orange.svg)
 ![Platforms](https://img.shields.io/badge/Platforms-iOS%2017+%20%7C%20macOS%2014+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-swift-authentication signs in with sessions the app's own server issues (`SessionAuthenticator`). This package holds what an app that used Firebase Authentication needs while it moves:
+`FirebaseKeychainLegacySessionSource` reads the user the earlier version of the app left in the keychain, and hands its refresh token to `SessionAuthenticator(legacySource:)`. The authenticator sends it once to the server's `/v1/auth/firebase` as `{ refreshToken, installId }`; the server trades it at Google for an ID token and keeps the Firebase uid as the user id. The device never talks to Google, so the move works where Google cannot be reached. Afterwards the keychain item is removed.
 
-| Type | Use |
-|---|---|
-| `FirebaseLegacySessionSource` | Hand it to `SessionAuthenticator(legacySource:)`. On a device with no session yet, the Firebase user's ID token is exchanged once at the server's `/v1/auth/firebase`; the person keeps their uid, and the Firebase session is signed out afterwards. |
-| `FirebaseAuthenticator`, `FirebaseTokenProvider`, `FirebaseConfigurator` | The Firebase implementations that lived in swift-authentication 10.x, for apps that have not moved yet. |
+Depends on Foundation, Security and swift-authentication's `Authentication` only.
 
 ## Moving an app
 
 ```swift
 import AuthenticationSession
 import AuthenticationFirebase
-import FirebaseCore
-import FirebaseAuth
 
 let authenticator = SessionAuthenticator(
     baseURL: apiURL,
     installID: { InstallID.current },
-    legacySource: FirebaseLegacySessionSource {
-        // Only devices without a session reach this, so new users never start Firebase.
-        if FirebaseApp.app() == nil {
-            FirebaseConfigurator.configure(sessionAfterReinstall: .keep)
-        }
-        return Auth.auth()
-    },
+    // GOOGLE_APP_ID from the GoogleService-Info.plist the earlier version shipped.
+    legacySource: FirebaseKeychainLegacySessionSource(googleAppID: "1:1234567890:ios:abcdef"),
     accountDeletionPath: "v1/account"
 )
 ```
 
-When the exchange fails — no network — `establishSession()` throws instead of opening a new anonymous user, and the app tries again later. Once old versions of the app are rare enough, remove this package.
+- When the exchange may succeed later — no network, the server's 503 while Google is unreachable, a keychain still locked — `establishSession()` throws and opens no new session; the next launch tries again.
+- When the server says it never will — Google refused the refresh token for good — the item is removed and the device starts as a new one would.
+- `storedUser()` reads the item without a request: the uid, email, display name and linked providers the earlier version had. Use it to show the person as signed in while the exchange waits for the network.
+- An item that cannot be read is reported as `FirebaseKeychainError` — `keychainFailed(status:)`, `notAKeyedArchive`, `unexpectedArchive` — never as "no user".
+
+The item is the SDK's: service `firebase_auth_<GOOGLE_APP_ID>`, account `firebase_auth_1_<app name>_firebase_user`, holding a keyed archive of `FIRUser`; the account without the prefix and service is what the oldest SDKs wrote, and is read too. A user kept in a shared access group (`Auth.useUserAccessGroup(_:)`) is not read.
+
+Once old versions of the app are rare enough, remove this package.
 
 ## Installation
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "1.0.0")
+    .package(url: "https://github.com/no-problem-dev/swift-authentication-firebase.git", from: "2.0.0")
 ]
 ```
+
+The Firebase `Authenticator` of 1.x (`FirebaseAuthenticator`, `FirebaseTokenProvider`, `FirebaseConfigurator`) is gone; an app that still signs in through Firebase stays on 1.x.
 
 ## Requirements
 
