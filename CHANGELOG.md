@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-16
+
+A launch the person did not start — prewarming, a background task — before the first unlock or
+while the device is locked no longer reads the Firebase user as missing.
+
+### Fixed
+
+- `storedUser()` and `legacyCredential()` no longer answer `nil` while the device's protected
+  data is unavailable. A locked keychain can return `errSecItemNotFound` for the item that is
+  there (firebase-ios-sdk#16498, fixed in the SDK by #16505); the source now checks before
+  trusting it and throws `ProtectedDataUnavailable`, so `SessionAuthenticator` neither exchanges
+  nor opens an anonymous session over the person's account.
+- `errSecInteractionNotAllowed` is thrown as `ProtectedDataUnavailable`, in place of
+  `FirebaseKeychainError.keychainFailed(status: -25308)`.
+
+### Added
+
+- `FirebaseKeychainLegacySessionSource(…, protectedData:)`, `KeychainProtectedDataProbe` by
+  default.
+
+### Changed
+
+- Requires swift-authentication 12.1.0, for `ProtectedDataAvailability` and
+  `ProtectedDataUnavailable`.
+
 ## [2.0.0] - 2026-11-16
 
 The package no longer depends on the Firebase SDK. It reads what Firebase Authentication left in

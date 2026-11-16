@@ -22,12 +22,18 @@ import Authentication
 ///
 /// Read without a request, ``storedUser()`` also tells who the earlier version had signed in —
 /// for a screen that shows the person as signed in while the exchange waits for the network.
+///
+/// While the device's protected data is not available — a prewarmed or background launch before
+/// the first unlock, or while locked — the keychain cannot be read, and can answer "not found"
+/// for the item that is there. Nothing is reported as "no user" then: ``ProtectedDataUnavailable``
+/// is thrown, and `SessionAuthenticator` neither exchanges nor opens an anonymous session over it.
 public struct FirebaseKeychainLegacySessionSource: LegacySessionSource {
     /// The Firebase app name the SDK uses unless the app configured another.
     public static let defaultAppName = "__FIRAPP_DEFAULT"
 
     private let item: FirebaseUserKeychainItem
     private let keychain: any KeychainItems
+    private let protectedData: any ProtectedDataAvailability
 
     /// Creates a source.
     ///
@@ -36,28 +42,44 @@ public struct FirebaseKeychainLegacySessionSource: LegacySessionSource {
     ///     its keychain item under the service `firebase_auth_<googleAppID>`.
     ///   - appName: The Firebase app's name. Only an app that configured a named `FirebaseApp`
     ///     passes another.
-    public init(googleAppID: String, appName: String = Self.defaultAppName) {
-        self.init(item: FirebaseUserKeychainItem(googleAppID: googleAppID, appName: appName), keychain: SystemKeychain())
+    ///   - protectedData: Asked before an item that was not found is reported as no user.
+    ///     `KeychainProtectedDataProbe` by default.
+    public init(
+        googleAppID: String,
+        appName: String = Self.defaultAppName,
+        protectedData: any ProtectedDataAvailability = KeychainProtectedDataProbe()
+    ) {
+        self.init(
+            item: FirebaseUserKeychainItem(googleAppID: googleAppID, appName: appName),
+            keychain: SystemKeychain(),
+            protectedData: protectedData
+        )
     }
 
-    init(item: FirebaseUserKeychainItem, keychain: any KeychainItems) {
+    init(item: FirebaseUserKeychainItem, keychain: any KeychainItems, protectedData: any ProtectedDataAvailability) {
         self.item = item
         self.keychain = keychain
+        self.protectedData = protectedData
     }
 
     /// The Firebase user in the keychain, or `nil` when there is none.
     ///
-    /// - Throws: ``FirebaseKeychainError``. A keychain that could not be read, and an item that
-    ///   is not a Firebase user this version understands, are not the same as no user — the
+    /// - Throws: `ProtectedDataUnavailable` while the device's protected data is not available,
+    ///   and ``FirebaseKeychainError`` otherwise. A keychain that could not be read, and an item
+    ///   that is not a Firebase user this version understands, are not the same as no user — the
     ///   person's records may be under it — so they are reported, never treated as `nil`.
     public func storedUser() throws -> FirebaseKeychainUser? {
-        guard let data = try item.read(from: keychain) else { return nil }
+        guard let data = try item.read(from: keychain) else {
+            // Locked, the keychain can say "not found" for an item that is there.
+            guard protectedData.isAvailable else { throw ProtectedDataUnavailable(status: errSecItemNotFound) }
+            return nil
+        }
         return try FirebaseUserArchive.decode(data, key: item.userKey)
     }
 
     /// The stored user's refresh token, or `nil` when there is no Firebase user.
     ///
-    /// - Throws: ``FirebaseKeychainError``, as for ``storedUser()``.
+    /// - Throws: As for ``storedUser()``.
     public func legacyCredential() async throws -> LegacyCredential? {
         try storedUser().map { .firebaseRefreshToken($0.refreshToken) }
     }
@@ -121,8 +143,8 @@ public struct FirebaseKeychainUser: Sendable, Equatable {
 
 /// Why the Firebase user in the keychain could not be read.
 public enum FirebaseKeychainError: Error, Equatable, Sendable {
-    /// A keychain call returned this status — `errSecInteractionNotAllowed` when the app runs
-    /// in the background before the device was first unlocked, say. May pass; try again later.
+    /// A keychain call returned this status. `errSecInteractionNotAllowed` — the device's
+    /// protected data is not available — is thrown as `ProtectedDataUnavailable` instead.
     case keychainFailed(status: OSStatus)
     /// The item is not a keyed archive. `reason` is what the unarchiver said.
     case notAKeyedArchive(reason: String)
